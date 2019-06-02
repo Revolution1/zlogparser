@@ -1,0 +1,3 @@
+[submodule "Zilliqa"]
+	path = Zilliqa
+	url = https://github.com/Zilliqa/Zilliqa.git
