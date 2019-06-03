@@ -7,6 +7,7 @@ import os
 import sys
 import time
 
+import recovery
 from preprocess import LogStream
 from storage import LogStorage
 
@@ -27,16 +28,15 @@ INDEX_STORAGE = './log-cache'
 
 def index_file(filepath):
     LOG = logging.getLogger()
-    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(logging.Formatter('[%(levelname)-5s][%(name)-32s][%(process)-5d] %(message)s'))
-    LOG.handlers = [console_handler]
     LOG.name = 'indexer:%s' % filepath.split('/')[-1]
     try:
         stream = LogStream(filepath)
         LOG.info('indexing: ' + stream.node)
         storage = LogStorage(stream.node, './log-cache')
-        bulk_size = 100
+        bulk_size = 256
         buf = []
+        # with storage.transaction_context():
         for l in stream:
             buf.append(l)
             if len(buf) == bulk_size:
@@ -44,6 +44,8 @@ def index_file(filepath):
                 buf = []
         if buf:
             storage.put_log_many(buf)
+        storage.gen_items()
+        storage.create_index()
         LOG.info('done indexing: ' + stream.node)
     except:
         LOG.exception('error wile index file: ' + filepath)
@@ -70,20 +72,53 @@ def index_cmd(*files):
     print('speed:    %s %s' % ('%.1f' % (size / dur / 1024 / 1024), 'Mb/s'))
 
 
-def list_cmd(field, node=None):
-    if field == 'node':
-        if not os.path.isdir(INDEX_STORAGE):
-            LOG.error('index dir %s not exists or is not a dir.' % INDEX_STORAGE)
-        nodes = [os.path.split(p)[-1].rpartition('.')[0] for p in glob.glob(os.path.join(INDEX_STORAGE, '*.sqlite3'))]
-        # print('Indexed Nodes:')
-        print('\n'.join(sorted(nodes)))
+def indexed_nodes():
+    if not os.path.isdir(INDEX_STORAGE):
+        LOG.error('index dir %s not exists or is not a dir.' % INDEX_STORAGE)
+        sys.exit(1)
+    return [os.path.split(p)[-1].rpartition('.')[0] for p in glob.glob(os.path.join(INDEX_STORAGE, '*.sqlite3'))]
+
+
+def list_cmd(item, node=None):
+    if item == 'node':
+        print('\n'.join(sorted(indexed_nodes())))
+    elif item == 'field':
+        print('\n'.join((
+            'Fields of the Log:',
+            'level     -   log level',
+            'tid       -   thread ID',
+            'puttime   -   datetime of the log (YYYY-MM-DD HH:MM:SS.sss)',
+            'fileline  -   filepath:lineno (filepath is left truncated)',
+            'function  -   right truncated function name of the log',
+            'message   -   log message'
+        )))
     else:
         if not node:
             LOG.error('node not provided')
             sys.exit(1)
+        elif node not in indexed_nodes():
+            LOG.error('node index not exists')
+            sys.exit(1)
+        store = LogStorage(node, INDEX_STORAGE)
+        cur = store.con.execute('SELECT value from items WHERE field=?', (item,))
+        print('\n'.join(sorted(i[0] for i in cur)))  # TODO: recover function name and filepath
 
-def range_cmd():
-    pass
+
+def range_cmd(node, start, end, recover=False):
+    if node not in indexed_nodes():
+        LOG.error('node index not exists')
+        sys.exit(1)
+    store = LogStorage(node, INDEX_STORAGE)
+    cur = store.con.execute(
+        'SELECT level,tid,puttime,fileline,function,message from log WHERE puttime BETWEEN DATETIME(?) AND DATETIME(?)',
+        (start, end))
+    for l in cur:
+        level, tid, puttime, fileline, function, message = l
+        if recover:
+            function, filepath, lineno = recovery.recover(function, fileline)
+            function = '%-40s' % function
+            fileline = '%-50s:%-4s' % (filepath, lineno)
+        print('  '.join([level, '{:5}'.format(tid), puttime, fileline, function, message]))
 
 
 def query_cmd():
@@ -133,11 +168,17 @@ def main():
     cmd_list = sub.add_parser('list', description='List items of indexed logs')
     cmd_list.add_argument('node', nargs='?', help='get unique filed in particular node, optional when filed=node')
     cmd_list.add_argument(
-        'field', help='the field to list, one of (node|fields|tid|function)')
+        'item', help='the field to list, one of (node|field|tid|function)',
+        choices=('node', 'field', 'tid', 'function'))
 
     cmd_range = sub.add_parser('range', description='Get logs of particular time range')
-    cmd_range.add_argument('start', help='the start datetime to query')
-    cmd_range.add_argument('end', nargs='?', help='the end datetime to query, default to now')
+    cmd_range.add_argument('node', help='the node to query log from')
+    cmd_range.add_argument('-s', '--start', dest='start', default='1970-01-01', required=False,
+                           help='the start datetime to query, default to unix-epoch')
+    cmd_range.add_argument('-e', '--end', dest='end', default='now', required=False,
+                           help='the end datetime to query, default to now')
+    cmd_range.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
+                           help='try to recover the full filepath and function name')
 
     cmd_query = sub.add_parser('query', description='Query the logs by SQL')
     cmd_query.add_argument('node', help='the node to query log from')

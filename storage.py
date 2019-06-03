@@ -2,6 +2,7 @@ import errno
 import logging
 import os
 import sqlite3
+from contextlib import contextmanager
 
 from utils import cached_property
 
@@ -19,7 +20,15 @@ message         TEXT
 )
 '''
 
-SQL_CREATE_TABLE_FULL_TEXT = '''
+SQL_CREATE_TABLE_ITEMS = '''
+CREATE TABLE IF NOT EXISTS items (
+    field TEXT    NOT NULL,
+    value TEXT    NOT NULL,
+    PRIMARY KEY (field, value)
+)
+'''
+
+SQL_CREATE_TABLE_INVERTED_INDEX = '''
 CREATE TABLE IF NOT EXISTS invidx (
     word TEXT    NOT NULL,
     id   INTEGER NOT NULL,
@@ -27,10 +36,11 @@ CREATE TABLE IF NOT EXISTS invidx (
 )
 '''
 
+SQL_CREATE_INDEX_LVL = 'CREATE INDEX IF NOT EXISTS log_level ON  log (level)'
 SQL_CREATE_INDEX_TID = 'CREATE INDEX IF NOT EXISTS log_tid ON  log (tid)'
-SQL_CREATE_INDEX_TME = 'CREATE INDEX IF NOT EXISTS log_time ON log (puttime)'
-SQL_CREATE_INDEX_FUN = 'CREATE INDEX IF NOT EXISTS log_time ON log (function)'
-SQL_CREATE_INDEX_FIL = 'CREATE INDEX IF NOT EXISTS log_time ON log (fileline)'
+SQL_CREATE_INDEX_TME = 'CREATE INDEX IF NOT EXISTS log_puttime ON log (puttime)'
+SQL_CREATE_INDEX_FUN = 'CREATE INDEX IF NOT EXISTS log_function ON log (function)'
+SQL_CREATE_INDEX_FIL = 'CREATE INDEX IF NOT EXISTS log_fileline ON log (fileline)'
 
 
 class LogStorage(object):
@@ -63,11 +73,13 @@ class LogStorage(object):
 
     def init(self):
         self.con.execute(SQL_CREATE_TABLE)
-        self.con.execute(SQL_CREATE_INDEX_TID)
-        self.con.execute(SQL_CREATE_INDEX_TME)
-        self.con.execute(SQL_CREATE_INDEX_FUN)
-        self.con.execute(SQL_CREATE_INDEX_FIL)
+        self.con.execute(SQL_CREATE_TABLE_ITEMS)
+        self.con.execute(SQL_CREATE_TABLE_INVERTED_INDEX)
         self.con.execute('PRAGMA synchronous = OFF')
+        self.con.execute("PRAGMA read_uncommitted = true")
+        self.con.execute("PRAGMA cache_size = -40000")
+        self.con.execute("PRAGMA journal_mode = MEMORY")
+        # self.con.execute("PRAGMA journal_mode = OFF")
 
     def put_log(self, log):
         return self.con.execute(
@@ -80,6 +92,23 @@ class LogStorage(object):
             'INSERT INTO log (level, tid, puttime, fileline, function, message) VALUES (?,?,?,?,?,?)',
             logs
         )
+
+    def create_index(self):  # create index after insertion can improve performance
+        # self.con.execute(SQL_CREATE_INDEX_LVL)
+        self.con.execute(SQL_CREATE_INDEX_TID)
+        self.con.execute(SQL_CREATE_INDEX_TME)
+        self.con.execute(SQL_CREATE_INDEX_FUN)
+        self.con.execute(SQL_CREATE_INDEX_FIL)
+
+    @contextmanager
+    def transaction_context(self):
+        self.con.execute("BEGIN TRANSACTION")
+        yield
+        self.con.commit()
+
+    def gen_items(self):
+        for filed in ('level', 'tid', 'fileline', 'function'):
+            self.con.execute("INSERT INTO items (field, value) SELECT DISTINCT '{f}', {f} FROM log".format(f=filed))
 
 
 if __name__ == '__main__':
@@ -108,6 +137,7 @@ if __name__ == '__main__':
             buf = []
     if buf:
         storage.put_log_many(buf)
+    storage.gen_items()
     dur = time.time() - t1
     # print 'workers: ', workers
     print 'duration:', dur, 'sec'

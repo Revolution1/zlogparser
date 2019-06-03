@@ -38,9 +38,9 @@ LOG_FIELDS = [
     ('level', None),
     ('tid', lambda x: int(x)),
     # ('time', lambda x: datetime.datetime.strptime(x, '%y-%m-%dT%H:%M:%S.%f')),
-    ('time', lambda x: '20' + x),
+    ('time', lambda x: '20' + x.replace('T', ' ')),
     ('fileline', None),
-    ('func', None),
+    ('function', None),
     ('msg', None)
 ]
 
@@ -48,7 +48,7 @@ LOG_FIELDS = [
 class LogStream(object):
     def __init__(self, filename):
         self.filename = filename
-        self.node = os.path.split(filename)[-1].rstrip('.txt').rpartition('.')[0]
+        self.node = os.path.split(filename)[-1].rpartition('.')[0]
         self._fp = None
         self._msg_pending = False
         self._msg_buf = []
@@ -82,7 +82,7 @@ class LogStream(object):
                     self._msg_buf = []
                     self._msg_pending = False
                     yield log
-                fields = line.split(']')
+                fields = line.split(']', 5)
                 for name, formatter in LOG_FIELDS:
                     f = fields.pop(0).lstrip('[').strip()
                     if formatter:
