@@ -79,6 +79,13 @@ def indexed_nodes():
     return [os.path.split(p)[-1].rpartition('.')[0] for p in glob.glob(os.path.join(INDEX_STORAGE, '*.sqlite3'))]
 
 
+def get_node_storage(node):
+    if node not in indexed_nodes():
+        LOG.error('node index not exists')
+        sys.exit(1)
+    return LogStorage(node, INDEX_STORAGE)
+
+
 def list_cmd(item, node=None):
     if item == 'node':
         print('\n'.join(sorted(indexed_nodes())))
@@ -96,22 +103,12 @@ def list_cmd(item, node=None):
         if not node:
             LOG.error('node not provided')
             sys.exit(1)
-        elif node not in indexed_nodes():
-            LOG.error('node index not exists')
-            sys.exit(1)
-        store = LogStorage(node, INDEX_STORAGE)
+        store = get_node_storage(node)
         cur = store.con.execute('SELECT value from items WHERE field=?', (item,))
         print('\n'.join(sorted(i[0] for i in cur)))  # TODO: recover function name and filepath
 
 
-def range_cmd(node, start, end, recover=False):
-    if node not in indexed_nodes():
-        LOG.error('node index not exists')
-        sys.exit(1)
-    store = LogStorage(node, INDEX_STORAGE)
-    cur = store.con.execute(
-        'SELECT level,tid,puttime,fileline,function,message from log WHERE puttime BETWEEN DATETIME(?) AND DATETIME(?)',
-        (start, end))
+def print_rows(cur, recover):
     for l in cur:
         level, tid, puttime, fileline, function, message = l
         if recover:
@@ -121,8 +118,18 @@ def range_cmd(node, start, end, recover=False):
         print('  '.join([level, '{:5}'.format(tid), puttime, fileline, function, message]))
 
 
-def query_cmd():
-    pass
+def range_cmd(node, start, end, recover=False):
+    store = get_node_storage(node)
+    cur = store.con.execute(
+        'SELECT level,tid,puttime,fileline,function,message from log WHERE puttime BETWEEN DATETIME(?) AND DATETIME(?)',
+        (start, end))
+    print_rows(cur, recover)
+
+
+def query_cmd(node, query_string, recover=False):
+    store = get_node_storage(node)
+    cur = store.con.execute('SELECT level,tid,puttime,fileline,function,message from log WHERE ' + query_string)
+    print_rows(cur, recover)
 
 
 def search_cmd():
@@ -181,8 +188,10 @@ def main():
                            help='try to recover the full filepath and function name')
 
     cmd_query = sub.add_parser('query', description='Query the logs by SQL')
+    cmd_query.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
+                           help='try to recover the full filepath and function name')
     cmd_query.add_argument('node', help='the node to query log from')
-    cmd_query.add_argument('query_string', help='the query string to execute (sqlite3 WHERE clause)')
+    cmd_query.add_argument('query_string', type=str, help='the query string to execute (sqlite3 WHERE clause)')
 
     cmd_search = sub.add_parser('search', description='Do a full-text search over log message')
     cmd_search.add_argument('node', nargs='?', help='the node to search log from')
