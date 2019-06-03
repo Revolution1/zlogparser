@@ -1,7 +1,7 @@
 import logging
 import os
 
-LOG = logging.getLogger('preprocess')
+LOG = logging.getLogger()
 
 INFO = 'INFO'
 DEBUG = 'DEBUG'
@@ -48,7 +48,7 @@ LOG_FIELDS = [
 class LogStream(object):
     def __init__(self, filename):
         self.filename = filename
-        self.node = os.path.split(filename)[-1].rstrip('.txt').rstrip('.log')
+        self.node = os.path.split(filename)[-1].rstrip('.txt').rpartition('.')[0]
         self._fp = None
         self._msg_pending = False
         self._msg_buf = []
@@ -57,7 +57,7 @@ class LogStream(object):
 
     def open(self):
         if not self._fp or self._fp.closed:
-            self._fp = open(self.filename)
+            self._fp = open(self.filename, 'rb')
 
     def reload(self):
         self.open()
@@ -73,7 +73,7 @@ class LogStream(object):
         for line in self._fp:
             if not line:
                 continue
-            if line.startswith('['):
+            if line[0] == '[':
                 if self._log_buf:
                     msg = '\n'.join(self._msg_buf)
                     log = self._log_buf

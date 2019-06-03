@@ -1,7 +1,11 @@
+import errno
+import logging
 import os
 import sqlite3
 
 from utils import cached_property
+
+LOG = logging.getLogger()
 
 SQL_CREATE_TABLE = '''
 CREATE TABLE IF NOT EXISTS log (
@@ -15,22 +19,39 @@ message         TEXT
 )
 '''
 
+SQL_CREATE_TABLE_FULL_TEXT = '''
+CREATE TABLE IF NOT EXISTS invidx (
+    word TEXT    NOT NULL,
+    id   INTEGER NOT NULL,
+    PRIMARY KEY (word, id)
+)
+'''
+
 SQL_CREATE_INDEX_TID = 'CREATE INDEX IF NOT EXISTS log_tid ON  log (tid)'
 SQL_CREATE_INDEX_TME = 'CREATE INDEX IF NOT EXISTS log_time ON log (puttime)'
-
-STORAGE_PATH = './log-cache'
+SQL_CREATE_INDEX_FUN = 'CREATE INDEX IF NOT EXISTS log_time ON log (function)'
+SQL_CREATE_INDEX_FIL = 'CREATE INDEX IF NOT EXISTS log_time ON log (fileline)'
 
 
 class LogStorage(object):
-    def __init__(self, node):
+    def __init__(self, node, storage_dir):
         self.node = node
-        self.path = os.path.join(STORAGE_PATH, node + '.sqlite3')
+        self.storage_dir = storage_dir
+        self.path = os.path.join(storage_dir, node + '.sqlite3')
         self.init()
 
     @cached_property
     def con(self):
-        if not os.path.exists(STORAGE_PATH):
-            os.mkdir(STORAGE_PATH)
+        if not os.path.exists(self.storage_dir):
+            LOG.info('creating index storage dir: %s' % self.storage_dir)
+            try:
+                os.makedirs(self.storage_dir)
+            except OSError, e:
+                # be happy if someone already created the path
+                if e.errno != errno.EEXIST:
+                    raise
+        elif not os.path.isdir(self.storage_dir):
+            raise RuntimeError('%s exists but is not a directory' % self.storage_dir)
         return sqlite3.connect(self.path)
 
     def close(self):
@@ -44,6 +65,8 @@ class LogStorage(object):
         self.con.execute(SQL_CREATE_TABLE)
         self.con.execute(SQL_CREATE_INDEX_TID)
         self.con.execute(SQL_CREATE_INDEX_TME)
+        self.con.execute(SQL_CREATE_INDEX_FUN)
+        self.con.execute(SQL_CREATE_INDEX_FIL)
         self.con.execute('PRAGMA synchronous = OFF')
 
     def put_log(self, log):
@@ -69,7 +92,7 @@ if __name__ == '__main__':
     t1 = time.time()
 
     stream = LogStream(logfile)
-    storage = LogStorage(stream.node)
+    storage = LogStorage(stream.node, './log-cache')
     bulk_size = 100
     buf = []
     for l in stream:
