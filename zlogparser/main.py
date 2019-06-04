@@ -146,6 +146,10 @@ def query_cmd(node, query_string, recover=False):
     print_rows(cur, recover)
 
 
+def full_text_index_cmd():
+    pass
+
+
 def search_cmd():
     pass
 
@@ -185,7 +189,7 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
                 print(
                     indent_block(
                         'END  %s        [duration:%.2fs  %s]  [%s:%s]' % (
-                        fun + '()', duration, shorten_time(put), fi, ln),
+                            fun + '()', duration, shorten_time(put), fi, ln),
                         len(stack) - 1
                     )
                 )
@@ -201,7 +205,7 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
                     indent_block(
                         "Unmatched function end:\n"
                         'END  %s        [duration:%.2fs  %s]  [%s:%s]' % (
-                        fun + '()', duration, shorten_time(put), fi, ln),
+                            fun + '()', duration, shorten_time(put), fi, ln),
                         len(stack)
                     )
                 )
@@ -226,6 +230,7 @@ commands = {
     'ls': list_cmd,
     'range': range_cmd,
     'query': query_cmd,
+    'full-text-index': full_text_index_cmd,
     'search': search_cmd,
     'callstack': callstack_cmd
 }
@@ -248,10 +253,12 @@ def main():
     parser = argparse.ArgumentParser(prog='zlogparser', description='Zilliqa Log Analyzer')
     sub = parser.add_subparsers(title='commands', dest='command')
 
-    cmd_index = sub.add_parser('index', description='Index log file[s] for further analyze')
+    # index
+    cmd_index = sub.add_parser('index', description='Index log file[s] for further analysis')
     cmd_index.add_argument(
         'file', nargs='+', help='the log Zilliqa files to index')
 
+    # ls
     cmd_list = sub.add_parser('ls', description='List items of indexed logs')
     cmd_list.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
                           help='try to recover the full filepath and function name')
@@ -261,6 +268,7 @@ def main():
 
         choices=('node', 'field', 'level', 'tid', 'function'))
 
+    # range
     cmd_range = sub.add_parser('range', description='Get logs of particular time range')
     cmd_range.add_argument('node', help='the node to query log from')
     cmd_range.add_argument('-s', '--start', dest='start', default='1970-01-01', required=False,
@@ -270,16 +278,23 @@ def main():
     cmd_range.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
                            help='try to recover the full filepath and function name')
 
+    # query
     cmd_query = sub.add_parser('query', description='Query the logs by SQL')
     cmd_query.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
                            help='try to recover the full filepath and function name')
     cmd_query.add_argument('node', help='the node to query log from')
     cmd_query.add_argument('query_string', help='the query string to execute (sqlite3 WHERE clause)')
 
+    # search index
+    sub.add_parser('full-text-index', description='do full text indexing for "search" command')
+    # search
     cmd_search = sub.add_parser('search', description='Do a full-text search over log message')
     cmd_search.add_argument('node', nargs='?', help='the node to search log from')
     cmd_search.add_argument('keywords', help='the keywords to search')
+    cmd_search.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
+                            help='try to recover the full filepath and function name')
 
+    # callstack
     cmd_callstack = sub.add_parser('callstack', description='Get callstack of particular task')
     cmd_callstack.add_argument('node', help='the node to get log from')
     cmd_callstack.add_argument('tid', type=int, help='the thread ID of the task')
