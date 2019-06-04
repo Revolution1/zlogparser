@@ -88,7 +88,7 @@ class Spinner(object):
         self.stop()
 
 
-def indent_block(s, n=1, indent='  ', border='| '):
+def indent_block(s, n=1, indent='    ', border='| '):
     padding = indent * n
     border = border or ''
     if not n:

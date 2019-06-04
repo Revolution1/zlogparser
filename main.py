@@ -207,10 +207,7 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
                 break
         else:
             if show_msg:
-                if msg.count('\n') > 1:
-                    msg = '\n' + indent_block('msg:\n' + msg, len(stack))
-                else:
-                    msg = '\n' + indent_block('msg: ' + msg, len(stack))
+                msg = '\n' + indent_block(msg, len(stack))
             else:
                 msg = ''
             print(
