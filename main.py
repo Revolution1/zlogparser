@@ -86,7 +86,7 @@ def get_node_storage(node):
     return LogStorage(node, INDEX_STORAGE)
 
 
-def list_cmd(item, node=None):
+def list_cmd(item, node=None, recover=False):
     if item == 'node':
         print('\n'.join(sorted(indexed_nodes())))
     elif item == 'field':
@@ -103,9 +103,20 @@ def list_cmd(item, node=None):
         if not node:
             LOG.error('node not provided')
             sys.exit(1)
-        store = get_node_storage(node)
-        cur = store.con.execute('SELECT value from items WHERE field=?', (item,))
-        print('\n'.join(sorted(i[0] for i in cur)))  # TODO: recover function name and filepath
+        if item == 'function':
+            store = get_node_storage(node)
+            cur = store.con.execute("SELECT DISTINCT function, fileline from log WHERE message='BEG'")
+            for function, fileline in cur:
+                if recover:
+                    function, filepath, lineno = recovery.recover(function, fileline)
+                    if len(function) > 20:
+                        function = '%s[%s]' % (function[:20], function[20:])
+                    fileline = '%s:%s' % (filepath, lineno)
+                print('%-55s  %s' % (function, fileline))
+        else:
+            store = get_node_storage(node)
+            cur = store.con.execute('SELECT value from items WHERE field=?', (item,))
+            print('\n'.join(sorted(i[0] for i in cur)))
 
 
 def print_rows(cur, recover):
@@ -142,7 +153,7 @@ def callstack_cmd():
 
 commands = {
     'index': index_cmd,
-    'list': list_cmd,
+    'ls': list_cmd,
     'range': range_cmd,
     'query': query_cmd,
     'search': search_cmd,
@@ -172,11 +183,14 @@ def main():
     cmd_index.add_argument(
         'file', nargs='+', help='the log Zilliqa files to index')
 
-    cmd_list = sub.add_parser('list', description='List items of indexed logs')
+    cmd_list = sub.add_parser('ls', description='List items of indexed logs')
+    cmd_list.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
+                          help='try to recover the full filepath and function name')
     cmd_list.add_argument('node', nargs='?', help='get unique filed in particular node, optional when filed=node')
     cmd_list.add_argument(
-        'item', help='the field to list, one of (node|field|tid|function)',
-        choices=('node', 'field', 'tid', 'function'))
+        'item', help='the field to list, one of (node|field|level|tid|function)',
+
+        choices=('node', 'field', 'level', 'tid', 'function'))
 
     cmd_range = sub.add_parser('range', description='Get logs of particular time range')
     cmd_range.add_argument('node', help='the node to query log from')

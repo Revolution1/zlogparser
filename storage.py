@@ -107,7 +107,8 @@ class LogStorage(object):
         self.con.commit()
 
     def gen_items(self):
-        for filed in ('level', 'tid', 'fileline', 'function'):
+        # for filed in ('level', 'tid', 'fileline', 'function'):
+        for filed in ('level', 'tid'):
             self.con.execute("INSERT INTO items (field, value) SELECT DISTINCT '{f}', {f} FROM log".format(f=filed))
 
 

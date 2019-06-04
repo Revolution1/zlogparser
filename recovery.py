@@ -14,7 +14,8 @@ def recover(function, fileline, tags=None):
         lineno = int(lineno)
         tag_match = []
         for t in tags:
-            if t[0].startswith(function):
+            _f = function.rstrip('()')
+            if t[0].startswith(_f):
                 tag_match.append(t)
         if not tag_match:
             func, path, lineno = function, path, lineno
