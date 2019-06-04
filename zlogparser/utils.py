@@ -4,7 +4,9 @@ from __future__ import print_function
 import datetime
 import sys
 import time
-from threading import Thread
+from collections import namedtuple, OrderedDict
+from functools import wraps
+from threading import Thread, Lock
 
 if sys.version_info[0] < 3:
     PY2 = True
@@ -12,6 +14,90 @@ if sys.version_info[0] < 3:
 else:
     PY2 = False
     PY3 = True
+
+_CacheInfo = namedtuple("CacheInfo", "hits misses maxsize currsize")
+
+
+def lru_cache(maxsize=100):
+    """Least-recently-used cache decorator.
+    If *maxsize* is set to None, the LRU features are disabled and the cache
+    can grow without bound.
+    Arguments to the cached function must be hashable.
+    View the cache statistics named tuple (hits, misses, maxsize, currsize) with
+    f.cache_info().  Clear the cache and statistics with f.cache_clear().
+    Access the underlying function with f.__wrapped__.
+    See:  http://en.wikipedia.org/wiki/Cache_algorithms#Least_Recently_Used
+    """
+
+    # Users should only access the lru_cache through its public API:
+    #       cache_info, cache_clear, and f.__wrapped__
+    # The internals of the lru_cache are encapsulated for thread safety and
+    # to allow the implementation to change (including a possible C version).
+
+    def decorating_function(user_function):
+        hits, misses = [0], [0]
+        kwd_mark = (object(),)  # separates positional and keyword args
+        lock = Lock()  # needed because OrderedDict isn't threadsafe
+
+        if maxsize is None:
+            cache = dict()  # simple cache without ordering or size limit
+
+            @wraps(user_function)
+            def wrapper(*args, **kwds):
+                key = args
+                if kwds:
+                    key += kwd_mark + tuple(sorted(kwds.items()))
+                try:
+                    result = cache[key]
+                    hits[0] += 1
+                    return result
+                except KeyError:
+                    pass
+                result = user_function(*args, **kwds)
+                cache[key] = result
+                misses[0] += 1
+                return result
+        else:
+            cache = OrderedDict()  # ordered least recent to most recent
+            cache_popitem = cache.popitem
+
+            @wraps(user_function)
+            def wrapper(*args, **kwds):
+                key = args
+                if kwds:
+                    key += kwd_mark + tuple(sorted(kwds.items()))
+                with lock:
+                    try:
+                        result = cache[key]
+                        cache[key] = cache.pop(key)  # record recent use of this key
+                        hits[0] += 1
+                        return result
+                    except KeyError:
+                        pass
+                result = user_function(*args, **kwds)
+                with lock:
+                    cache[key] = result  # record recent use of this key
+                    misses[0] += 1
+                    if len(cache) > maxsize:
+                        cache_popitem(0)  # purge least recently used cache entry
+                return result
+
+        def cache_info():
+            """Report cache statistics"""
+            with lock:
+                return _CacheInfo(hits[0], misses[0], maxsize, len(cache))
+
+        def cache_clear():
+            """Clear the cache and cache statistics"""
+            with lock:
+                cache.clear()
+                hits[0] = misses[0] = 0
+
+        wrapper.cache_info = cache_info
+        wrapper.cache_clear = cache_clear
+        return wrapper
+
+    return decorating_function
 
 
 class cached_property(object):

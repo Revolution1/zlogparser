@@ -1,5 +1,7 @@
 import sys
 
+from zlogparser.utils import lru_cache
+
 if sys.version_info[0] < 3:
     def u(s):
         return unicode(s, "unicode_escape")
@@ -190,6 +192,7 @@ class EnglishStemmer(_StandardStemmer):
                        "succeeded": "succeed",
                        "succeeding": "succeed"}
 
+    @lru_cache(512)
     def stem(self, word):
 
         """
@@ -563,7 +566,7 @@ class EnglishStemmer(_StandardStemmer):
 
 if __name__ == '__main__':
     msg = 'State root hash = 573e4975096ebd6368963d5df85d22afae4611bbdd4b0d3d4fbcfc29ac3234c4 ' \
-          'Stored TxBlock num = 24463'.split()
+          'Stored Stored Stored StoredStored TxBlock num = 24463 t.m_microblockhash'.split()
     for m in msg:
         stm = EnglishStemmer()
-        print m, stm.stem(m)
+        print(m, stm.stem(m))

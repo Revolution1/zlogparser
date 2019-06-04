@@ -3,11 +3,11 @@
 
 - Written in python 2.7 (for maximum compatibility)
 
-- Zero non-standard-lib depend
+- Zero non-standard-lib depends
 
 ## Install
 
-```bash
+```
 make install
 
 # or
@@ -17,7 +17,7 @@ python ./setup.py install
 
 ## Usage
 
-```bash
+```
 usage: zlogparser [-h] {index,ls,range,query,full-text-index,search,callstack} ...
 
 Zilliqa Log Analyzer
