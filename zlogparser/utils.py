@@ -6,6 +6,13 @@ import sys
 import time
 from threading import Thread
 
+if sys.version_info[0] < 3:
+    PY2 = True
+    PY3 = False
+else:
+    PY2 = False
+    PY3 = True
+
 
 class cached_property(object):
     def __init__(self, func):
@@ -95,7 +102,7 @@ def indent_block(s, n=1, indent='    ', border='| '):
         border = ''
     if border:
         padding = padding
-    return '\n'.join(padding + border + i for i in s.splitlines())
+    return u'\n'.join(padding + border + i for i in s.splitlines())
 
 
 def parse_puttime(t):

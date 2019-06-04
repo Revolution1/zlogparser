@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 cache = {}
 
 
@@ -36,9 +38,9 @@ def recover(function, fileline, tags=None):
 
 
 if __name__ == '__main__':
-    print recover('ProcessStateDeltaFro', 'ckProcessing.cpp:788')
-    print recover('ProcessStateDelta', 'ckProcessing.cpp:788')
-    print recover('ProcessStateDelta', 'ckProcessing.cpp:787')
-    print recover('P', 'ckProcessing.cpp:788')
-    print recover('ProcessStateDelta', 'p:788')
-    print recover('ProcessS', 'g.cpp:700')
+    print(recover('ProcessStateDeltaFro', 'ckProcessing.cpp:788'))
+    print(recover('ProcessStateDelta', 'ckProcessing.cpp:788'))
+    print(recover('ProcessStateDelta', 'ckProcessing.cpp:787'))
+    print(recover('P', 'ckProcessing.cpp:788'))
+    print(recover('ProcessStateDelta', 'p:788'))
+    print(recover('ProcessS', 'g.cpp:700'))

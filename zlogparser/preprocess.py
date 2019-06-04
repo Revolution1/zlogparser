@@ -83,10 +83,20 @@ class LogStream(object):
                     self._msg_pending = False
                     yield log
                 fields = line.split(']', 5)
+                if len(fields) < 5:
+                    LOG.error("Unparsed line: " + line)
+                    continue
                 for name, formatter in LOG_FIELDS:
                     f = fields.pop(0).lstrip('[').strip()
                     if formatter:
-                        f = formatter(f)
+                        try:
+                            f = formatter(f)
+                        except Exception as e:
+                            self._log_buf = []
+                            self._msg_buf = []
+                            self._msg_pending = False
+                            LOG.error("Error: %s\n" % e + "Unparsed line: " + line)
+                            continue
                     if name == 'msg':
                         self._msg_buf = [f]
                     else:
@@ -105,11 +115,11 @@ class LogStream(object):
 def __process(l):
     try:
         stream = LogStream(l)
-        print 'processing:', stream.node
+        print('processing:', stream.node)
         msg_len = 0
         for i in stream:
             msg_len = max(msg_len, len(i[-1]))
-        print 'done processing:', stream.node, 'max_msg:', msg_len
+        print('done processing:', stream.node, 'max_msg:', msg_len)
     except:
         LOG.exception('error')
 
@@ -127,7 +137,7 @@ if __name__ == '__main__':
     t = time.time()
     pool.map(__process, files)
     dur = time.time() - t
-    print 'workers: ', workers
-    print 'count:   ', len(files)
-    print 'duration:', dur, 'sec'
-    print 'speed:   ', size / dur / 1024 / 1024, 'Mb/s'
+    print('workers: ', workers)
+    print('count:   ', len(files))
+    print('duration:', dur, 'sec')
+    print('speed:   ', size / dur / 1024 / 1024, 'Mb/s')

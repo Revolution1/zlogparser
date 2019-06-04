@@ -56,7 +56,7 @@ class LogStorage(object):
             LOG.info('creating index storage dir: %s' % self.storage_dir)
             try:
                 os.makedirs(self.storage_dir)
-            except OSError, e:
+            except OSError as e:
                 # be happy if someone already created the path
                 if e.errno != errno.EEXIST:
                     raise
@@ -100,6 +100,9 @@ class LogStorage(object):
         self.con.execute(SQL_CREATE_INDEX_FUN)
         self.con.execute(SQL_CREATE_INDEX_FIL)
 
+    def create_fulltext_index(self):
+        pass
+
     @contextmanager
     def transaction_context(self):
         self.con.execute("BEGIN TRANSACTION")
@@ -133,7 +136,7 @@ if __name__ == '__main__':
             except sqlite3.OperationalError:
                 for b in buf:
                     if len(b) < 6:
-                        print b
+                        print(b)
                 raise
             buf = []
     if buf:
@@ -141,5 +144,5 @@ if __name__ == '__main__':
     storage.gen_items()
     dur = time.time() - t1
     # print 'workers: ', workers
-    print 'duration:', dur, 'sec'
-    print 'speed:   ', size / dur / 1024 / 1024, 'Mb/s'
+    print('duration:', dur, 'sec')
+    print('speed:   ', size / dur / 1024 / 1024, 'Mb/s')

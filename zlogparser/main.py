@@ -184,7 +184,8 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
             if top[1] == fun and top[2] == fi:
                 print(
                     indent_block(
-                        'END  %s        [cost:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln),
+                        'END  %s        [duration:%.2fs  %s]  [%s:%s]' % (
+                        fun + '()', duration, shorten_time(put), fi, ln),
                         len(stack) - 1
                     )
                 )
@@ -192,14 +193,15 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
             elif strict:
                 LOG.error(
                     "Unmatched function end:\n"
-                    'END  %s        [cost:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln)
+                    'END  %s        [duration:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln)
                 )
                 sys.exit(1)
             else:
                 print(
                     indent_block(
                         "Unmatched function end:\n"
-                        'END  %s        [cost:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln),
+                        'END  %s        [duration:%.2fs  %s]  [%s:%s]' % (
+                        fun + '()', duration, shorten_time(put), fi, ln),
                         len(stack)
                     )
                 )
@@ -243,9 +245,8 @@ def main():
                    search KEYWORD
                    callstack NODE TID TASK
     """
-    parser = argparse.ArgumentParser(description='Zilliqa Log Analyzer')
-
-    sub = parser.add_subparsers(dest='command')
+    parser = argparse.ArgumentParser(prog='zlogparser', description='Zilliqa Log Analyzer')
+    sub = parser.add_subparsers(title='commands', dest='command')
 
     cmd_index = sub.add_parser('index', description='Index log file[s] for further analyze')
     cmd_index.add_argument(
@@ -277,7 +278,7 @@ def main():
 
     cmd_search = sub.add_parser('search', description='Do a full-text search over log message')
     cmd_search.add_argument('node', nargs='?', help='the node to search log from')
-    cmd_search.add_argument('keyword', help='the keyword to search')
+    cmd_search.add_argument('keywords', help='the keywords to search')
 
     cmd_callstack = sub.add_parser('callstack', description='Get callstack of particular task')
     cmd_callstack.add_argument('node', help='the node to get log from')
@@ -294,7 +295,10 @@ def main():
     # LOG.info(kwargs)
 
     command = kwargs.pop('command')
-
+    if not command:
+        parser.print_usage()
+        print('zlogparser: error: too few arguments')
+        sys.exit(2)
     func = commands[command]
     if command == 'index':
         return func(*kwargs['file'])
