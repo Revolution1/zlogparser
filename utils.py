@@ -1,5 +1,7 @@
 # coding=utf-8
 from __future__ import print_function
+
+import datetime
 import sys
 import time
 from threading import Thread
@@ -15,6 +17,7 @@ class cached_property(object):
             return self
         value = obj.__dict__[self.func.__name__] = self.func(obj)
         return value
+
 
 class SpinnerStyle():
     Box1 = u'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
@@ -84,3 +87,20 @@ class Spinner(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
+
+def indent_block(s, n=1, indent='  ', border='| '):
+    padding = indent * n
+    border = border or ''
+    if not n:
+        border = ''
+    if border:
+        padding = padding
+    return '\n'.join(padding + border + i for i in s.splitlines())
+
+
+def parse_puttime(t):
+    return datetime.datetime.strptime(t.replace('T', ' '), '%Y-%m-%d %H:%M:%S.%f')
+
+
+def shorten_time(t):
+    return parse_puttime(t).strftime('%H:%M:%S.%f').rstrip('0')

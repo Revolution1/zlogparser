@@ -10,6 +10,9 @@ import time
 import recovery
 from preprocess import LogStream
 from storage import LogStorage
+from utils import indent_block
+from utils import parse_puttime
+from utils import shorten_time
 
 level = os.getenv('LOG_LEVEL') or logging.INFO
 LOG_FORMAT = '[%(levelname)-5s] %(message)s'
@@ -147,8 +150,76 @@ def search_cmd():
     pass
 
 
-def callstack_cmd():
-    pass
+def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
+    """
+    BEGIN function() [xxx.cpp:123]
+    """
+
+    store = get_node_storage(node)
+    cur = store.con.execute(
+        "SELECT * FROM log WHERE tid=? AND function=? and message='BEG' "
+        "order by abs(julianday(puttime) - julianday(?)) limit 1",
+        (tid, task[:20], puttime)
+    )
+    # TODO: uniq
+    start = cur.fetchone()
+    if not start:
+        LOG.error("Stack entry not found")
+        sys.exit(1)
+    lid, lvl, tid, put, fl, fun, msg = start
+    cur = store.con.execute("SELECT * FROM log WHERE id>=? AND tid=?", (lid, tid,))
+    fun, fi, ln = recovery.recover(fun, fl)
+    stack = []
+    print("Displaying Call Stack of %s() in thread %s" % (fun, tid))
+    for lid, lvl, tid, put, fl, fun, msg in cur:
+        fun, fi, ln = recovery.recover(fun, fl)
+        if msg == 'BEG':
+            stack.append(('BEG', fun, fi, ln, put))
+            print(
+                indent_block('BEGIN  %s        [%s]  [%s:%s]' % (fun + '()', shorten_time(put), fi, ln), len(stack) - 1)
+            )
+        elif msg == 'END':
+            top = stack[-1]
+            duration = (parse_puttime(put) - parse_puttime(top[4])).total_seconds()
+            if top[1] == fun and top[2] == fi:
+                print(
+                    indent_block(
+                        'END  %s        [cost:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln),
+                        len(stack) - 1
+                    )
+                )
+                stack.pop()
+            elif strict:
+                LOG.error(
+                    "Unmatched function end:\n"
+                    'END  %s        [cost:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln)
+                )
+                sys.exit(1)
+            else:
+                print(
+                    indent_block(
+                        "Unmatched function end:\n"
+                        'END  %s        [cost:%.2fs  %s]  [%s:%s]' % (fun + '()', duration, shorten_time(put), fi, ln),
+                        len(stack)
+                    )
+                )
+            if not stack:
+                break
+        else:
+            if show_msg:
+                if msg.count('\n') > 1:
+                    msg = '\n' + indent_block('msg:\n' + msg, len(stack))
+                else:
+                    msg = '\n' + indent_block('msg: ' + msg, len(stack))
+            else:
+                msg = ''
+            print(
+                indent_block(
+                    '[%s]  %s        [%s]  [%s:%s]' % (lvl, fun + '()', shorten_time(put), fi, ln)
+                    + msg,
+                    len(stack)
+                )
+            )
 
 
 commands = {
@@ -205,7 +276,7 @@ def main():
     cmd_query.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
                            help='try to recover the full filepath and function name')
     cmd_query.add_argument('node', help='the node to query log from')
-    cmd_query.add_argument('query_string', type=str, help='the query string to execute (sqlite3 WHERE clause)')
+    cmd_query.add_argument('query_string', help='the query string to execute (sqlite3 WHERE clause)')
 
     cmd_search = sub.add_parser('search', description='Do a full-text search over log message')
     cmd_search.add_argument('node', nargs='?', help='the node to search log from')
@@ -215,6 +286,12 @@ def main():
     cmd_callstack.add_argument('node', help='the node to get log from')
     cmd_callstack.add_argument('tid', type=int, help='the thread ID of the task')
     cmd_callstack.add_argument('task', help='the task(function) name to search')
+    cmd_callstack.add_argument('-t', '--puttime', dest='puttime', default='now',
+                               help='find the task "BEG" call nearest to the puttime, default to now')
+    cmd_callstack.add_argument('-s', '--strict', dest='strict', action='store_true',
+                               help='raise error when callstack mismatched')
+    cmd_callstack.add_argument('-m', '--show-msg', dest='show_msg', action='store_true',
+                               help='show message in printed stack')
 
     kwargs = vars(parser.parse_args())
     # LOG.info(kwargs)
