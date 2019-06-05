@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import time
+from contextlib import contextmanager
 
 import recovery
 from preprocess import LogStream
@@ -29,6 +30,17 @@ LOG = root_logger
 INDEX_STORAGE = './log-cache'
 
 
+class AlreadyExistsError(Exception):
+    pass
+
+
+@contextmanager
+def measure_time(name):
+    t = time.time()
+    yield
+    LOG.info("%s done. Cost: %.1f sec" % (name, time.time() - t))
+
+
 def index_file(filepath):
     LOG = logging.getLogger()
     console_handler.setFormatter(logging.Formatter('[%(levelname)-5s][%(name)-32s][%(process)-5d] %(message)s'))
@@ -39,24 +51,31 @@ def index_file(filepath):
         store = LogStorage(stream.node, './log-cache')
         if os.path.isfile(store.path):
             LOG.error('log index file %s already exists' % store.path)
+            raise AlreadyExistsError()
         store.init()
         store.create_log_table()
         bulk_size = 256
         buf = []
         # with storage.transaction_context():
-        for l in stream:
-            buf.append(l)
-            if len(buf) == bulk_size:
+        with measure_time("insert log"):
+            for l in stream:
+                buf.append(l)
+                if len(buf) == bulk_size:
+                    store.put_log_many(buf)
+                    buf = []
+            if buf:
                 store.put_log_many(buf)
-                buf = []
-        if buf:
-            store.put_log_many(buf)
-        store.gen_items()
-        store.create_index()
-        store.create_fulltext_index_fts()
+        with measure_time("create index"):
+            store.create_index()
+        with measure_time("generate items"):
+            store.gen_items()
+        with measure_time("create full-text index"):
+            store.create_fulltext_index_fts()
         LOG.info('done indexing: ' + stream.node)
+    except AlreadyExistsError:
+        return
     except:
-        LOG.exception('error wile index file: ' + filepath)
+        LOG.exception('error while indexing file: ' + filepath)
 
 
 def index_cmd(*files):
@@ -71,7 +90,10 @@ def index_cmd(*files):
 
     size = sum(os.stat(i).st_size for i in files)
     t = time.time()
-    pool.map(index_file, files)
+    try:
+        pool.map(index_file, files)
+    except KeyboardInterrupt:
+        pool.terminate()
     dur = time.time() - t
 
     print('workers:  %s' % workers)
@@ -232,6 +254,10 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
             )
 
 
+def clean():
+    os.system('rm -rf ' + INDEX_STORAGE)
+
+
 commands = {
     'index': index_cmd,
     'ls': list_cmd,
@@ -239,7 +265,8 @@ commands = {
     'query': query_cmd,
     'full-text-index': full_text_index_cmd,
     'search': search_cmd,
-    'callstack': callstack_cmd
+    'callstack': callstack_cmd,
+    'clean': clean
 }
 
 
@@ -315,6 +342,8 @@ def main():
     cmd_callstack.add_argument('-m', '--show-msg', dest='show_msg', action='store_true',
                                help='show message in printed stack')
 
+    sub.add_parser('clean', description='do full text indexing for "search" command')
+
     kwargs = vars(parser.parse_args())
     # LOG.info(kwargs)
 
@@ -324,10 +353,14 @@ def main():
         print('zlogparser: error: too few arguments')
         sys.exit(2)
     func = commands[command]
-    if command == 'index':
-        return func(*kwargs['file'])
-    else:
-        return func(**kwargs)
+    try:
+        if command == 'index':
+            return func(*kwargs['file'])
+        else:
+            return func(**kwargs)
+    except KeyboardInterrupt:
+        print('abort')
+        sys.exit(1)
 
 
 if __name__ == '__main__':

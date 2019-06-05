@@ -169,8 +169,8 @@ if __name__ == '__main__':
             buf = []
     if buf:
         store.put_log_many(buf)
-    store.gen_items()
     store.create_index()
+    store.gen_items()
     dur = time.time() - t1
     # print 'workers: ', workers
     print('duration: %.2f sec' % dur)
