@@ -133,5 +133,5 @@ optional arguments:
                         find the task "BEG" call nearest to the puttime,
                         default to now
   -s, --strict          raise error when callstack mismatched
-  -m, --show-msg        show message in printed stack
+  -m, --show-msg        show log message in printed stack
 ```

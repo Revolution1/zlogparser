@@ -207,6 +207,8 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
     for lid, lvl, tid, put, fl, fun, msg in cur:
         fun, fi, ln = recovery.recover(fun, fl)
         if msg == 'BEG':
+            if not stack:
+                print("Start at " + put)
             stack.append(('BEG', fun, fi, ln, put))
             print(
                 indent_block('BEGIN  %s        [%s]  [%s:%s]' % (fun + '()', shorten_time(put), fi, ln), len(stack) - 1)
@@ -240,11 +242,8 @@ def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
                 )
             if not stack:
                 break
-        else:
-            if show_msg:
-                msg = '\n' + indent_block(msg, len(stack))
-            else:
-                msg = ''
+        elif show_msg:
+            msg = '\n' + indent_block(msg, len(stack))
             print(
                 indent_block(
                     '[%s]  %s        [%s]  [%s:%s]' % (lvl, fun + '()', shorten_time(put), fi, ln)
@@ -340,7 +339,7 @@ def main():
     cmd_callstack.add_argument('-s', '--strict', dest='strict', action='store_true',
                                help='raise error when callstack mismatched')
     cmd_callstack.add_argument('-m', '--show-msg', dest='show_msg', action='store_true',
-                               help='show message in printed stack')
+                               help='show log message in printed stack')
 
     sub.add_parser('clean', description='do full text indexing for "search" command')
 
