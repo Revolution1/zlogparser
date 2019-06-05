@@ -197,3 +197,26 @@ def parse_puttime(t):
 
 def shorten_time(t):
     return parse_puttime(t).strftime('%H:%M:%S.%f').rstrip('0')
+
+
+def levenshtein(seq1, seq2, limit=None):
+    """
+    the Levenshtein edit distance between two strings.
+    """
+    # oneago = None
+    thisrow = list(range(1, len(seq2) + 1)) + [0]
+    for x in range(len(seq1)):
+        # Python lists wrap around for negative indices, so put the
+        # leftmost column at the *end* of the list. This matches with
+        # the zero-indexed strings and saves extra calculation.
+        oneago, thisrow = thisrow, [0] * len(seq2) + [x + 1]
+        for y in range(len(seq2)):
+            delcost = oneago[y] + 1
+            addcost = thisrow[y - 1] + 1
+            subcost = oneago[y - 1] + (seq1[x] != seq2[y])
+            thisrow[y] = min(delcost, addcost, subcost)
+
+        if limit and x > limit and min(thisrow) > limit:
+            return limit + 1
+
+    return thisrow[len(seq2) - 1]

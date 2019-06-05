@@ -14,7 +14,7 @@ from utils import indent_block
 from utils import parse_puttime
 from utils import shorten_time
 
-level = os.getenv('LOG_LEVEL') or logging.INFO
+LOG_LEVEL = os.getenv('LOG_LEVEL') or logging.INFO
 LOG_FORMAT = '[%(levelname)-5s] %(message)s'
 # LOG_FORMAT = '[%(levelname)-5s][%(name)-32s][%(process)-5d] %(message)s'
 console_handler = logging.StreamHandler(sys.stderr)
@@ -22,7 +22,7 @@ formatter = logging.Formatter(LOG_FORMAT)
 console_handler.setFormatter(formatter)
 root_logger = logging.getLogger()
 root_logger.addHandler(console_handler)
-root_logger.setLevel(level)
+root_logger.setLevel(LOG_LEVEL)
 
 LOG = root_logger
 
@@ -36,19 +36,24 @@ def index_file(filepath):
     try:
         stream = LogStream(filepath)
         LOG.info('indexing: ' + stream.node)
-        storage = LogStorage(stream.node, './log-cache')
+        store = LogStorage(stream.node, './log-cache')
+        if os.path.isfile(store.path):
+            LOG.error('log index file %s already exists' % store.path)
+        store.init()
+        store.create_log_table()
         bulk_size = 256
         buf = []
         # with storage.transaction_context():
         for l in stream:
             buf.append(l)
             if len(buf) == bulk_size:
-                storage.put_log_many(buf)
+                store.put_log_many(buf)
                 buf = []
         if buf:
-            storage.put_log_many(buf)
-        storage.gen_items()
-        storage.create_index()
+            store.put_log_many(buf)
+        store.gen_items()
+        store.create_index()
+        store.create_fulltext_index_fts()
         LOG.info('done indexing: ' + stream.node)
     except:
         LOG.exception('error wile index file: ' + filepath)
@@ -124,7 +129,7 @@ def list_cmd(item, node=None, recover=False):
 
 def print_rows(cur, recover):
     for l in cur:
-        level, tid, puttime, fileline, function, message = l
+        _, level, tid, puttime, fileline, function, message = l
         if recover:
             function, filepath, lineno = recovery.recover(function, fileline)
             function = '%-40s' % function
@@ -135,14 +140,14 @@ def print_rows(cur, recover):
 def range_cmd(node, start, end, recover=False):
     store = get_node_storage(node)
     cur = store.con.execute(
-        'SELECT level,tid,puttime,fileline,function,message from log WHERE puttime BETWEEN DATETIME(?) AND DATETIME(?)',
+        'SELECT * from log WHERE puttime BETWEEN DATETIME(?) AND DATETIME(?)',
         (start, end))
     print_rows(cur, recover)
 
 
 def query_cmd(node, query_string, recover=False):
     store = get_node_storage(node)
-    cur = store.con.execute('SELECT level,tid,puttime,fileline,function,message from log WHERE ' + query_string)
+    cur = store.con.execute('SELECT * from log WHERE ' + query_string)
     print_rows(cur, recover)
 
 
@@ -150,8 +155,10 @@ def full_text_index_cmd():
     pass
 
 
-def search_cmd():
-    pass
+def search_cmd(node, keywords, recover=False):
+    store = get_node_storage(node)
+    cur = store.search(keywords)
+    print_rows(cur, recover)
 
 
 def callstack_cmd(node, tid, puttime, task, strict=False, show_msg=False):
@@ -286,11 +293,13 @@ def main():
     cmd_query.add_argument('query_string', help='the query string to execute (sqlite3 WHERE clause)')
 
     # search index
-    sub.add_parser('full-text-index', description='do full text indexing for "search" command')
+    # sub.add_parser('full-text-index', description='do full text indexing for "search" command')
     # search
     cmd_search = sub.add_parser('search', description='Do a full-text search over log message')
-    cmd_search.add_argument('node', nargs='?', help='the node to search log from')
-    cmd_search.add_argument('keywords', help='the keywords to search')
+    cmd_search.add_argument('node', help='the node to search log from')
+    cmd_search.add_argument('keywords', help="the keywords of the message to search, "
+                                             "support '*' as wildcard, "
+                                             "support logical operator (AND|OR|NOT)")
     cmd_search.add_argument('-r', '--recover', dest='recover', action='store_true', required=False,
                             help='try to recover the full filepath and function name')
 

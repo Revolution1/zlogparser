@@ -98,31 +98,20 @@ optional arguments:
   -r, --recover  try to recover the full filepath and function name
 ```
 
-### full-text-index
-
-```
-usage: zlogparser full-text-index [-h]
-
-do full text indexing for "search" command
-
-optional arguments:
-  -h, --help  show this help message and exit
-
-```
-
 ### search
 
 ```
-usage: zlogparser search [-h] [node] keywords
+usage: zlogparser search [-h] [-r] node keywords
 
 Do a full-text search over log message
 
 positional arguments:
-  node        the node to search log from
-  keywords    the keywords to search
+  node           the node to search log from
+  keywords       the keywords of the message to search, support '*' as
+                 wildcard, support logical operator (AND|OR|NOT)
 
 optional arguments:
-  -h, --help  show this help message and exit
+  -h, --help     show this help message and exit
   -r, --recover  try to recover the full filepath and function name
 ```
 

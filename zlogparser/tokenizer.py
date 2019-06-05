@@ -8,13 +8,13 @@ import itertools
 
 stm = EnglishStemmer()
 
-punctuation_set = set(punctuation)
+punctuation_set = frozenset(punctuation)
 
 STOP_WORDS = frozenset(('a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can',
                         'for', 'from', 'have', 'if', 'in', 'is', 'it', 'may',
                         'not', 'of', 'on', 'or', 'tbd', 'that', 'the', 'this',
                         'to', 'us', 'we', 'when', 'will', 'with', 'yet',
-                        'you', 'your'))
+                        'you', 'your', 'beg', 'end'))
 
 ADDR_REG = re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+')
 
@@ -24,6 +24,7 @@ DELIMITER_REG = re.compile(r'[=,]+')
 
 NON_WORD_REG = re.compile(r'\W')
 
+MIN_TOKEN_SIZE = 3
 
 def path_tokenize(p):
     return set(i for i in (stm.stem(i) for i in p.lower().replace('\\', '/').split('/')) if i)
@@ -43,7 +44,7 @@ def _tokenize_token(t):
     return (
         stm.stem(t) for t in tokens
         if t and
-        len(t) > 1 and
+        len(t) >= MIN_TOKEN_SIZE and
         t not in STOP_WORDS
     )
 
@@ -55,7 +56,7 @@ def tokenize(s):
     tokens = [
         t for t in tokens
         if t and
-           len(t) > 1 and
+           len(t) >= MIN_TOKEN_SIZE and
            t not in STOP_WORDS
     ]
     tokens = [stm.stem(t) for t in tokens]

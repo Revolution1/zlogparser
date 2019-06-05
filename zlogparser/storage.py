@@ -4,6 +4,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 
+from tokenizer import tokenize
 from utils import cached_property
 
 LOG = logging.getLogger()
@@ -28,10 +29,12 @@ CREATE TABLE IF NOT EXISTS items (
 )
 '''
 
+# type: 0 - message; 1 - fileline
 SQL_CREATE_TABLE_INVERTED_INDEX = '''
 CREATE TABLE IF NOT EXISTS invidx (
     word TEXT    NOT NULL,
     id   INTEGER NOT NULL,
+    type INTEGER NOT NULL,
     PRIMARY KEY (word, id)
 )
 '''
@@ -48,20 +51,9 @@ class LogStorage(object):
         self.node = node
         self.storage_dir = storage_dir
         self.path = os.path.join(storage_dir, node + '.sqlite3')
-        self.init()
 
     @cached_property
     def con(self):
-        if not os.path.exists(self.storage_dir):
-            LOG.info('creating index storage dir: %s' % self.storage_dir)
-            try:
-                os.makedirs(self.storage_dir)
-            except OSError as e:
-                # be happy if someone already created the path
-                if e.errno != errno.EEXIST:
-                    raise
-        elif not os.path.isdir(self.storage_dir):
-            raise RuntimeError('%s exists but is not a directory' % self.storage_dir)
         return sqlite3.connect(self.path)
 
     def close(self):
@@ -72,14 +64,25 @@ class LogStorage(object):
         self.close()
 
     def init(self):
-        self.con.execute(SQL_CREATE_TABLE)
-        self.con.execute(SQL_CREATE_TABLE_ITEMS)
-        self.con.execute(SQL_CREATE_TABLE_INVERTED_INDEX)
+        if not os.path.exists(self.storage_dir):
+            LOG.info('creating index storage dir: %s' % self.storage_dir)
+            try:
+                os.makedirs(self.storage_dir)
+            except OSError as e:
+                # be happy if someone already created the path
+                if e.errno != errno.EEXIST:
+                    raise
+        elif not os.path.isdir(self.storage_dir):
+            raise RuntimeError('%s exists but is not a directory' % self.storage_dir)
         self.con.execute('PRAGMA synchronous = OFF')
         self.con.execute("PRAGMA read_uncommitted = true")
         self.con.execute("PRAGMA cache_size = -40000")
         self.con.execute("PRAGMA journal_mode = MEMORY")
         # self.con.execute("PRAGMA journal_mode = OFF")
+
+    def create_log_table(self):
+        self.con.execute(SQL_CREATE_TABLE)
+        self.con.execute(SQL_CREATE_TABLE_ITEMS)
 
     def put_log(self, log):
         return self.con.execute(
@@ -100,8 +103,29 @@ class LogStorage(object):
         self.con.execute(SQL_CREATE_INDEX_FUN)
         self.con.execute(SQL_CREATE_INDEX_FIL)
 
-    def create_fulltext_index(self):
-        pass
+    def is_fts(self):
+        return self.con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ftsidx'").fetchone()
+
+    def create_fulltext_index_fts(self):
+        # https://www.sqlite.org/fts3.html#section_3
+        self.con.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS ftsidx USING fts4(content='log', message, tokenize=porter)"
+        )
+        self.con.execute("INSERT INTO ftsidx(docid, message) SELECT id, message FROM log")
+
+    def search(self, q):
+        return self.con.execute("select * from log where id in (select docid from ftsidx where message match ?)", (q,))
+
+    def create_fulltext_index_py(self):
+        self.con.execute(SQL_CREATE_TABLE_INVERTED_INDEX)
+        cur = self.con.execute("SELECT id, fileline, message FROM log")
+        for lid, fileline, message in cur:
+            if message in ('BEG', 'END'):
+                continue
+            tokens = tokenize(message)
+            words = ((w,) for w in tokens)
+            self.con.executemany("INSERT INTO invidx (word, id, type) VALUES (?, %s, 0)" % lid, words)
+        self.con.execute('CREATE INDEX IF NOT EXISTS inv_word ON invidx (word)')
 
     @contextmanager
     def transaction_context(self):
@@ -119,20 +143,24 @@ if __name__ == '__main__':
     from preprocess import LogStream
     import time
 
+    LOG.addHandler(logging.StreamHandler())
+
     logfile = 'logs/community-lookup-0.txt'
 
     size = os.stat(logfile).st_size
     t1 = time.time()
 
     stream = LogStream(logfile)
-    storage = LogStorage(stream.node, './log-cache')
+    store = LogStorage(stream.node, './log-cache')
+    store.init()
+    store.create_log_table()
     bulk_size = 100
     buf = []
     for l in stream:
         buf.append(l)
         if len(buf) == bulk_size:
             try:
-                storage.put_log_many(buf)
+                store.put_log_many(buf)
             except sqlite3.OperationalError:
                 for b in buf:
                     if len(b) < 6:
@@ -140,9 +168,19 @@ if __name__ == '__main__':
                 raise
             buf = []
     if buf:
-        storage.put_log_many(buf)
-    storage.gen_items()
+        store.put_log_many(buf)
+    store.gen_items()
+    store.create_index()
     dur = time.time() - t1
     # print 'workers: ', workers
-    print('duration:', dur, 'sec')
-    print('speed:   ', size / dur / 1024 / 1024, 'Mb/s')
+    print('duration: %.2f sec' % dur)
+    print('speed: %.2f Mb/s' % (size / dur / 1024 / 1024))
+
+    print('create full-text index')
+    t1 = time.time()
+    store.create_fulltext_index_fts()
+    dur = time.time() - t1
+    print('duration: %.2f sec' % dur)
+    print(store.search('epoch').fetchone())
+    print(store.search('epo*').fetchone())
+    print(store.search('epo').fetchone())
